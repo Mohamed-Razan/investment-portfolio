@@ -1,0 +1,121 @@
+// Prisma schema for the Investment Portfolio app
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum InvestmentType {
+  VARIABLE
+  FIXED
+}
+
+enum AssetType {
+  CURRENCY
+  GOLD
+}
+
+enum InvestmentStatus {
+  OPEN
+  CLOSED
+}
+
+enum TransactionMethod {
+  CASH
+  BANK
+  OTHER
+}
+
+enum Currency {
+  LKR
+  USD
+  EUR
+  GBP
+  AED
+  SAR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Company {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  investments Investment[]
+}
+
+model Investment {
+  id        String  @id @default(cuid())
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+
+  // e.g. GGP001, VT021, AI001 - unique code name across the whole portfolio
+  codeName String @unique
+
+  type   InvestmentType   @default(VARIABLE)
+  status InvestmentStatus @default(OPEN)
+
+  // What the ledger amounts are denominated in - money (see `currency`) or grams of 24kt gold
+  assetType AssetType @default(CURRENCY)
+  currency  Currency  @default(LKR)
+
+  // Only set when profit is paid in cash on a non-currency (e.g. gold) principal -
+  // negative ledger entries stay in the principal's unit, positive ones are in this currency
+  profitCurrency Currency?
+
+  // Only used for FIXED (Wakala) investments - the contractual monthly rate
+  fixedRatePerMonth Decimal? @db.Decimal(10, 4)
+
+  // Computed & cached whenever the investment is closed (recomputed on re-close after edits)
+  totalPrincipal       Decimal? @db.Decimal(18, 2)
+  totalReturned        Decimal? @db.Decimal(18, 2)
+  profitAmount         Decimal? @db.Decimal(18, 2)
+  durationMonths       Decimal? @db.Decimal(10, 4)
+  monthlyProfitPercent Decimal? @db.Decimal(10, 4)
+
+  openedAt DateTime? @default(now())
+  closedAt DateTime?
+
+  notes String?
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([type])
+}
+
+model Transaction {
+  id           String     @id @default(cuid())
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  investmentId String
+
+  date DateTime
+  // Negative = principal/capital invested (money out). Positive = return/profit received (money in).
+  amount Decimal           @db.Decimal(18, 2)
+  method TransactionMethod @default(CASH)
+  note   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([investmentId])
+  @@index([date])
+}
